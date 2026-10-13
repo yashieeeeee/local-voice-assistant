@@ -1,0 +1,34 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+models/
+out/
+data/samples/*.wav
+*.log
+.vscode/
+.idea/
+
+# Additional safety rules
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Virtual environments and Python caches
+venv/
+**/venv/
+**/.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local backup configs
+config.yaml.bak
+config.yaml.phase1-backup
+
+
+# Local backup files
+*.phase1-backup

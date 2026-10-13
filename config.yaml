@@ -1,0 +1,73 @@
+# profile: auto | default | low_memory | gpu
+#   auto -> "gpu" if a CUDA device is visible to CTranslate2, else "default"
+profile: default
+
+assistant:
+  system_prompt: >
+    You are a friendly voice assistant. Your replies are spoken aloud, so keep
+    them short and conversational: one to three short sentences. Never use
+    markdown, bullet points, numbered lists, emojis, or special symbols. Write
+    numbers and abbreviations the way they are spoken. Always reply in the
+    language the user speaks. If the user speaks Hindi, reply in Hindi using
+    Devanagari script so the voice can pronounce it correctly. If the user
+    speaks English, reply in English. If you are unsure what the user meant,
+    ask one brief clarifying question.
+
+stt:
+  model: small               # base | small | medium | large-v3-turbo
+  device: cpu
+  compute_type: int8         # int8 on CPU, float16 on CUDA
+  beam_size: 1
+  vad_filter: true
+  vad_min_silence_ms: 500
+  cpu_threads: 4
+  languages: [en, hi]        # auto-detect is restricted to these
+  language: null             # force a language (e.g. "en"), or null = auto
+
+llm:
+  host: http://localhost:11434
+  model: qwen2.5:3b
+  num_ctx: 2048
+  num_predict: 120
+  temperature: 0.6
+  keep_alive: 30m
+  request_timeout_s: 120
+
+tts:
+  engine: kokoro             # kokoro | piper
+  fallback: piper            # piper | none
+  device: cpu
+  threads: 4
+  speed: 1.0
+  kokoro_repo: hexgrad/Kokoro-82M
+  voices:
+    en: af_heart
+    hi: hf_alpha
+  piper:
+    models_dir: models/piper
+    voices:
+      en: en_US-lessac-medium
+      hi: hi_IN-pratham-medium
+
+session:
+  max_history_tokens: 900    # rolling window budget (excl. system prompt)
+  keep_last_turns: 6
+
+chunker:
+  min_chars_first: 20        # speak the first sentence ASAP
+  min_chars: 40
+  max_chars: 220
+
+server:
+  host: 127.0.0.1
+  port: 8000
+
+profiles:
+  default: {}
+  low_memory:
+    stt: {model: base}
+    llm: {model: "qwen2.5:1.5b-instruct"}
+  gpu:
+    stt: {model: large-v3-turbo, device: cuda, compute_type: float16, cpu_threads: 0}
+    llm: {model: "qwen2.5:3b", num_ctx: 2048, num_predict: 120}
+    tts: {device: cpu}

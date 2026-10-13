@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Voice Assistant</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Local Voice Assistant</h1>
+      <p class="sub">Whisper &rarr; Qwen (Ollama) &rarr; Kokoro &middot; fully local &middot; use headphones for best barge-in</p>
+    </header>
+
+    <section class="controls">
+      <button id="btnStart" class="primary">Start conversation</button>
+      <button id="btnStop" disabled>Stop</button>
+      <button id="btnReset" disabled>New conversation</button>
+      <div id="status" class="status idle"><span class="dot"></span><span id="statusText">Idle</span></div>
+    </section>
+    <p id="info" class="info"></p>
+
+    <section class="layout">
+      <div id="chat" class="chat" aria-live="polite">
+        <p class="hint">Press <b>Start conversation</b>, allow the microphone, then just talk. Interrupt me any time.</p>
+      </div>
+
+      <aside class="panel">
+        <h2>Latency (ms)</h2>
+        <table id="timings">
+          <thead><tr><th>Stage</th><th>Last</th><th>Avg</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="note">Server stages are measured from the moment the utterance arrives. "Perceived" is measured in the browser from VAD end-of-speech to first audible sound.</p>
+      </aside>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.29/dist/bundle.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
