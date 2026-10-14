@@ -10,64 +10,63 @@ Mic -> Silero VAD (browser) -> WebSocket -> faster-whisper -> Ollama LLM -> sent
 
 Architecture diagram and WebSocket protocol: [`docs/architecture.md`](docs/architecture.md) | Demo script: [`docs/demo_script.md`](docs/demo_script.md)
 
-## Project status (please read)
-
-This project is **under active testing**. Real-microphone voice testing is still in progress, and no latency figures have been published yet.
-
-| Area | Status |
-|---|---|
-| STT, LLM and TTS each work individually (`scripts/test_*.py`) | Tested on the development machine |
-| Full server run (Whisper small CPU/int8 + Ollama Qwen2.5 3B + Kokoro CPU) | Runs end to end on the development machine |
-| Protocol, sentence streaming, barge-in cancellation, history trimming | Passes the simulated self-test (`scripts/selftest.py`, fake models) |
-| Live voice use | **In progress.** Observed so far on an 8 GB machine: RAM allocation errors, slow or inaccurate transcription, occasional wrong LLM answers, and unexpected barge-in cancellations. Next step is re-testing on a machine with more RAM to separate hardware limits from bugs. |
-| Hinglish output | Improved using mixed-script text (Hindi words in Devanagari, English words in Latin script) in `server/tts.py`. Quality depends on the LLM following the prompt. |
-| GPU configuration (Whisper large-v3-turbo on CUDA) | **Optional and not validated end to end.** It worked in the standalone STT test, but the full pipeline ran out of memory on a 4 GB GPU / 8 GB RAM machine. |
-| Latency benchmark (`scripts/bench.py`) | Implemented, but not yet run on the target hardware. The results table below is empty on purpose. |
-
-## Models
-
-### Current tested setup (CPU)
+## Models (default setup, runs on CPU)
 
 | Role | Model | Runs on |
 |---|---|---|
 | STT | `faster-whisper` **small**, `int8`, beam size 1, built-in VAD filter | CPU |
-| LLM | **Qwen2.5 3B** through Ollama (exact tag: see `llm.model` in `config.yaml`) | Ollama |
+| LLM | **Qwen2.5 3B** through Ollama (exact tag: `llm.model` in `config.yaml`) | Ollama |
 | TTS | **Kokoro-82M** (English and Hindi voices) | CPU |
 | VAD | **Silero VAD** (`@ricky0123/vad-web`, runs in the browser) | Browser |
 
-Settings used for the LLM: `num_ctx 2048`, `num_predict 120`, `keep_alive 30m`. Models are loaded once at startup, warmed up, and shared by all sessions.
+LLM settings: `num_ctx 2048`, `num_predict 120`, `keep_alive 30m`. Every model is loaded once at startup, warmed up, and shared.
 
-### Optional configurations (not the tested default)
+## Status
 
-* **Piper TTS fallback.** The code can fall back to Piper if Kokoro fails to load (`tts.fallback` in `config.yaml`). It is not installed by default and has not been tested here. Install `piper-tts` and run `python scripts/download_models.py --piper` to try it.
-* **`low_memory` profile.** Intended for small machines: Whisper `base` and `qwen2.5:1.5b-instruct`. Switch with `$env:VA_PROFILE="low_memory"`. Not yet tested end to end.
-* **GPU configuration.** For a machine with a capable NVIDIA GPU (more VRAM than the 4 GB machine this was developed on). Needs CUDA 12 cuBLAS/cuDNN DLLs on `PATH`. A lighter option is to move only STT to the GPU:
-  ```powershell
-  $env:VA_STT__MODEL="large-v3-turbo"
-  $env:VA_STT__DEVICE="cuda"
-  $env:VA_STT__COMPUTE_TYPE="float16"
-  $env:VA_STT__CPU_THREADS="0"
-  ```
-  The built-in `gpu` profile (`$env:VA_PROFILE="gpu"`) is heavier: it also selects `qwen2.5:7b-instruct` and TTS on CUDA. Qwen 7B ran out of memory on the development machine, so treat it as untested.
+| Area | Status |
+|---|---|
+| Full pipeline (default CPU setup) on the author's Windows 11 laptop | Works end to end, as reported by the author |
+| Simulated self-test (`scripts/selftest.py`, fake models) | Passes |
+| Testing on other machines | Requested; see "Testing guide" below |
+| Hinglish | Mixed-script output (Hindi words in Devanagari, English words in Latin script) handled in `server/tts.py` |
+| Latency numbers | **Not published yet.** The table in "Benchmark" is empty until `scripts/bench.py` is run |
+| GPU configuration, `low_memory` profile, Piper fallback | Optional. Implemented in code but **not validated end to end** (see "Optional configurations") |
 
-## Hardware
+## Requirements
 
-* **Development machine:** Windows 11, 8 GB RAM. The tested setup above runs on CPU. Real voice testing on this machine is still in progress, and 8 GB has produced RAM allocation errors under live use.
-* **Recommendation (not yet verified):** 16 GB RAM or more for a smoother experience. A GPU is optional.
-* **Disk:** a few GB for models (Whisper, Kokoro weights, the Ollama model). If `C:` is short on space, point the Hugging Face cache to another drive: `setx HF_HOME D:\hf_cache`, then open a new terminal. Ollama has `OLLAMA_MODELS` for the same purpose.
+* Windows 11 (PowerShell). The code is plain Python and may work on Linux or macOS, but only Windows is documented here.
+* Python 3.11, Git and Ollama.
+* 8 GB RAM is tight for the default setup. 16 GB is recommended (not yet verified on other machines). No GPU is needed.
+* A few GB of free disk space for models.
+* Chrome or Edge, a microphone, and **headphones** (speakers let the mic hear the assistant and cause false interruptions).
+* Internet for setup (downloads) and for the first page load (see "Internet requirements").
 
-## Internet requirements
+## Testing guide (step by step)
 
-* **Inference is fully local.** Transcription, the language model and speech synthesis never contact an external service while you use the assistant.
-* **Setup needs internet** to download the models (Hugging Face, Ollama) and Python packages.
-* **The browser's VAD runtime needs internet on its first page load.** `index.html` loads `onnxruntime-web` and `@ricky0123/vad-web` (including the Silero model) from the jsDelivr CDN. A browser may cache these for later visits, but this is not guaranteed. Bundling them locally is possible but not done yet.
+### Step 1: Install the prerequisites
 
-## Installation (Windows 11, PowerShell, Python 3.11)
+Install Git, Python 3.11 and Ollama. If you have `winget`:
 
 ```powershell
-git clone <your-repo-url>
-cd voice-assistant
+winget install Git.Git
+winget install Python.Python.3.11
+winget install Ollama.Ollama
+```
 
+Then **close PowerShell and open a new window** so the new programs are on `PATH`.
+
+### Step 2: Clone the project
+
+```powershell
+git clone https://github.com/yashieeeeee/local-voice-assistant.git
+cd local-voice-assistant
+```
+
+### Step 3: Set up Python
+
+Run these one by one:
+
+```powershell
 py -3.11 -m venv .venv
 Set-ExecutionPolicy -Scope Process Bypass
 .\.venv\Scripts\Activate.ps1
@@ -76,41 +75,79 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
-### Ollama and the model tag
+The prompt should now start with `(.venv)`. The torch install is large and takes a few minutes.
 
-Install Ollama, then open a **new** terminal:
+### Step 4: Download the AI models
 
-```powershell
-winget install Ollama.Ollama
-```
-
-The model tag is defined in `config.yaml` under `llm.model`. Pull exactly that tag and verify it:
-
-```powershell
-Select-String -Path config.yaml -Pattern "^\s+model:"   # shows stt.model and llm.model
-python scripts/download_models.py                       # pulls the llm.model tag, Whisper and Kokoro weights
-ollama list                                             # the llm.model tag must appear here
-```
-
-If `ollama list` does not show the exact tag from `config.yaml`, either pull that tag (`ollama pull <tag>`) or change `llm.model` to a tag that is installed. A mismatch causes a "model not found" error at server startup.
-
-## Run
+Make sure Ollama is running (the Ollama app in the system tray, or `ollama serve` in another window). Check with `ollama list`; it should print a table without an error.
 
 ```powershell
 $env:PYTHONUTF8=1
-python scripts/selftest.py        # optional: protocol test with fake models, takes a few seconds
+python scripts/download_models.py
+```
+
+This downloads Whisper, the Qwen2.5 3B model (the tag from `config.yaml`) and the Kokoro voices. It can take a while. Afterwards, confirm the LLM is installed:
+
+```powershell
+ollama list
+```
+
+The tag in the `llm.model` line of `config.yaml` must appear in that list. If it does not, run `ollama pull <that tag>`; otherwise the server stops at startup with "model not found".
+
+### Step 5: Run the self-test
+
+```powershell
+python scripts/selftest.py
+```
+
+It uses fake models and takes a few seconds. It passes when the last line reads `ALL SELF-TESTS PASSED`. It checks the WebSocket protocol, sentence streaming, barge-in cancellation and history handling, not the real models.
+
+### Step 6: Start the assistant
+
+```powershell
 python -m uvicorn server.main:app --host 127.0.0.1 --port 8000
 ```
 
-Wait for `Pipeline ready.` in the log. The first start loads and warms up every model, which takes a while on CPU. Then open **http://127.0.0.1:8000** in Chrome or Edge, click **Start conversation**, allow the microphone and talk.
+Wait until the log says `Pipeline ready.` The first start loads and warms up every model and can take a while. **Keep this PowerShell window open** while testing.
 
-**Use headphones.** With speakers, the microphone can pick up the assistant's own voice and trigger false interruptions.
+### Step 7: Test it
 
-## Features implemented in the code
+1. Open http://127.0.0.1:8000 in Chrome or Edge.
+2. Click **Start conversation** and allow microphone access.
+3. Ask an English question, a Hindi question and a Hinglish question.
+4. Ask a simple maths question, such as "What is 2 plus 3?"
+5. Ask a follow-up that depends on the previous answer, to check conversation context.
+6. Interrupt the assistant while it is speaking to test barge-in.
+
+The panel on the right shows per-stage latency for each turn, in milliseconds.
+
+### Step 8: Report back
+
+Please share:
+
+* Any errors (copy the text from the PowerShell window).
+* Incorrect transcripts: what you said and what appeared on screen.
+* Response delays: roughly how long until you heard the first word.
+* Unexpected interruptions: the assistant stopping when you were not speaking.
+* Your laptop specs. These commands print them:
+
+```powershell
+systeminfo | findstr /C:"Total Physical Memory" /C:"OS Name"
+Get-CimInstance Win32_Processor | Select-Object Name
+Get-CimInstance Win32_VideoController | Select-Object Name
+```
+
+## Internet requirements
+
+* **Inference is fully local.** Transcription, the language model and speech synthesis never contact an external service while you use the assistant.
+* **Setup needs internet** to download models (Hugging Face, Ollama) and Python packages.
+* **The browser's VAD runtime needs internet on the first page load.** `index.html` loads `onnxruntime-web` and `@ricky0123/vad-web` (including the Silero model) from the jsDelivr CDN. A browser may cache these for later visits, but that is not guaranteed.
+
+## Features
 
 * **Streaming pipeline.** LLM tokens are split into sentences (at `.`, `?`, `!`, `।` and newlines). Each sentence is synthesized as soon as it is ready, so speech can start before the full reply exists.
 * **Voice activity detection** in the browser decides when an utterance ends.
-* **Interruption (barge-in).** When the browser VAD detects you speaking during playback, it stops audio, tells the server, and the server cancels the in-flight LLM stream and TTS work. The conversation history keeps only the text that was actually played. This passes the simulated test; live behaviour is still being tuned (see status above).
+* **Interruption (barge-in).** When the browser VAD detects you speaking during playback, it stops audio and tells the server. The server cancels the in-flight LLM stream and TTS work, and the conversation history keeps only the text that was actually played.
 * **Multilingual.** Whisper language detection is restricted to the languages in `stt.languages` (default English and Hindi). The TTS voice is chosen from the script of each sentence.
 * **Conversation context.** Per-session history with a rolling window (last N turns plus a token budget). Trimmed turns are reduced to a short "earlier topics" note.
 * **Per-turn latency timings** are logged by the server and shown in the UI.
@@ -121,11 +158,11 @@ Wait for `Pipeline ready.` in the log. The first start loads and warms up every 
 python scripts/bench.py --repeat 3
 ```
 
-Put a few real microphone recordings (WAV) in `data/samples/` for realistic results. If the folder is empty, the script synthesizes sample questions with the local TTS instead, which gives cleaner audio than real speech. The report is written to `docs/latency_results.md`.
+Put a few real microphone recordings (WAV) in `data/samples/` for realistic results. If the folder is empty, the script synthesizes sample questions with the local TTS, which is cleaner audio than real speech. The report is written to `docs/latency_results.md`.
 
 ### Observed latency
 
-_Not measured yet. Run the benchmark on the machine you are reporting for and paste the table here, together with that machine's specification._
+_Not measured yet. Run the benchmark and paste the table here with the machine's specification._
 
 | Stage | avg (ms) | p95 (ms) |
 |---|---:|---:|
@@ -137,15 +174,30 @@ _Not measured yet. Run the benchmark on the machine you are reporting for and pa
 
 Server timings start when the utterance arrives at the server. The browser's "Perceived" figure additionally includes the VAD silence window (`redemptionMs` in `web/app.js`).
 
+## Optional configurations (not validated end to end)
+
+* **GPU.** Needs an NVIDIA GPU with enough VRAM and CUDA 12 cuBLAS/cuDNN DLLs on `PATH`. Whisper large-v3-turbo on a 4 GB GPU worked in the standalone STT test but ran out of memory in the full pipeline on the author's machine, so treat GPU use as experimental. To move only STT to the GPU:
+  ```powershell
+  $env:VA_STT__MODEL="large-v3-turbo"
+  $env:VA_STT__DEVICE="cuda"
+  $env:VA_STT__COMPUTE_TYPE="float16"
+  $env:VA_STT__CPU_THREADS="0"
+  ```
+  The built-in `gpu` profile (`$env:VA_PROFILE="gpu"`) also selects `qwen2.5:7b-instruct` and TTS on CUDA. Qwen 7B ran out of memory on the author's machine.
+* **`low_memory` profile** (Whisper `base`, `qwen2.5:1.5b-instruct`): `$env:VA_PROFILE="low_memory"`, then run `python scripts/download_models.py` once to fetch those models.
+* **Piper TTS fallback.** The code can fall back to Piper if Kokoro fails to load (`tts.fallback` in `config.yaml`). It is not installed by default. Try it with `pip install piper-tts` and `python scripts/download_models.py --piper`.
+
+Make sure `profile` in `config.yaml` is `default` for the CPU setup described above (`auto` selects the GPU profile whenever CUDA is detected).
+
 ## Tuning
 
-Settings can be overridden without editing files, for example `$env:VA_STT__LANGUAGE="en"`.
+Settings can be overridden without editing files, for example `$env:VA_STT__LANGUAGE="en"` (set it in the same PowerShell window before starting the server).
 
 | Problem | Things to try |
 |---|---|
-| Slow or inaccurate transcription | Compare Whisper `small` and `medium` on the same recording. For an English-only demo, `VA_STT__LANGUAGE="en"` skips language detection. `base` is faster but less accurate. |
+| Slow or inaccurate transcription | Compare Whisper `small` and `medium` on the same recording. For an English-only demo, `VA_STT__LANGUAGE="en"` skips language detection. |
 | Long wait for the first LLM token | A smaller model, lower `llm.num_ctx`, a shorter system prompt. |
-| Odd or inconsistent LLM answers | Lower `llm.temperature` (for example 0.3). First check the transcript: wrong answers often come from a wrong transcript. |
+| Odd or inconsistent answers | Lower `llm.temperature` (for example 0.3). Check the transcript first: wrong answers often come from a wrong transcript. |
 | Long wait for the first spoken sentence | Lower `chunker.min_chars_first`. |
 | Assistant interrupts itself | Use headphones. In `web/app.js`, raise `positiveSpeechThreshold` and `minSpeechMs`. |
 | Feels slow after you stop talking | Lower `redemptionMs` in `web/app.js`. |
@@ -153,13 +205,16 @@ Settings can be overridden without editing files, for example `$env:VA_STT__LANG
 
 ## Troubleshooting
 
+* **`py` or `git` not recognized**: close and reopen PowerShell after installing.
+* **Activation is blocked**: run `Set-ExecutionPolicy -Scope Process Bypass` in the same window, then activate again.
 * **"Cannot reach Ollama"**: start the Ollama app or run `ollama serve`.
-* **"Model not found"**: the tag in `config.yaml` is not installed. Compare with `ollama list`.
-* **CUDA / cublas / cudnn DLL errors**: only relevant to the GPU configuration. Refresh `PATH` in the current terminal or go back to the CPU settings.
-* **Page reports that the VAD failed to load**: check internet access (first load) and hard-refresh. The page must be opened from `localhost` for microphone access.
-* **Hindi sounds wrong**: Kokoro's Hindi voice needs Devanagari text. If the LLM answered in Latin script, the system prompt in `config.yaml` is the place to adjust.
+* **"Model not found"**: the tag in `config.yaml` is not installed. Compare it with `ollama list`.
+* **Page reports that the VAD failed to load**: check internet access and hard-refresh (Ctrl+F5). The page must be opened from `localhost` for microphone access.
+* **No microphone prompt or no sound**: check the browser's site permissions and the Windows default input/output devices.
+* **Hindi sounds wrong**: Kokoro's Hindi voice needs Devanagari text. If the LLM answered in Latin script, adjust the system prompt in `config.yaml`.
 * **`?` characters instead of Devanagari in the console**: `$env:PYTHONUTF8=1`.
-* **`C:` drive full during downloads**: set `HF_HOME` (and `OLLAMA_MODELS`) to another drive.
+* **`C:` drive full during downloads**: set `HF_HOME` (and `OLLAMA_MODELS`) to another drive, then open a new terminal.
+* **CUDA / cublas / cudnn errors**: only relevant to the GPU configuration; switch back to the default CPU settings.
 
 ## Project layout
 
@@ -178,4 +233,4 @@ config.yaml   requirements.txt
 * TTS is sentence by sentence, a compromise between naturalness and latency on CPU.
 * History token counts are estimated with a character heuristic rather than a tokenizer, to avoid loading another model.
 * One conversation per WebSocket connection. Models are shared and turns are serialized.
-* A 3B model has limited accuracy and limited Hindi and Hinglish quality. A larger model needs more memory.
+* Whisper `small` can mis-transcribe Hindi, accented speech or noisy audio, and a 3B model can give wrong answers or weak Hindi/Hinglish. Larger models need more memory.
